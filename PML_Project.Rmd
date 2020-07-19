@@ -1,0 +1,148 @@
+---
+title: "Practical Machine Learning Project"
+author: "Gerald Herbosa"
+date: "7/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Overview
+
+The purpose of this project is to predict the manner of 6 participants where they perform some exercise which was recorded by gadgets like Jawbone Up, Nike FuelBand, and Fitbit. This is a requirement for the completion of Practical Machine Learning Course in Data Science Specialization. Algorithms utilized in this project was applied to the 20 test cases available in the test data given.
+
+Loading and Cleaning of Data
+
+```{r}
+library(knitr)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(caret)
+library(randomForest)
+library(corrplot)
+
+# Reading the data
+training <- read.csv('./pml-training.csv', header=T)
+testing <- read.csv('./pml-testing.csv', header=T)
+
+set.seed(1996)
+part_train  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+set_train <- training[part_train, ]
+set_test  <- training[-part_train, ]
+dim(set_train)
+dim(set_test)
+```
+Each dataset contains 160 variables. Next step was to remove N/A values in dataset. Variables that are Near Zero variance (NZV) are  removed and the ID variables.
+```{r}
+# NZV removal
+nzv <- nearZeroVar(set_train)
+set_train <- set_train[, -nzv]
+set_test <- set_test[, -nzv]
+dim(set_train)
+dim(set_test)
+```
+
+```{r}
+# variables that are mostly NA to be remove
+na <- sapply(set_train, function(x) mean(is.na(x))) > 0.95
+set_train <- set_train[, na==FALSE]
+set_test  <- set_test[, na==FALSE]
+dim(set_train)
+dim(set_test)
+```
+```{r}
+# ID variables which is columns 1 to 5 to be removed
+set_train <- set_train[, -(1:5)]
+set_test  <- set_test[, -(1:5)]
+dim(set_train)
+dim(set_test)
+```
+Data Correlation
+
+Analysis of variables and grasping the correlation is needed before proceeding with the modelling.
+```{r}
+matrix <- cor(set_train[, -54])
+corrplot(matrix, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+
+```
+
+Building Model
+
+Methods used are Random Forests, Decision Tree, and Generalized Boosted Model. These will be applied to the regression model in train data and the best method that gave a higher accuracy when applied to the test data will be utilized for the quiz. To visualize the data and compare accuracy, a confusion matrix is plotted for each.
+
+```{r}
+# fit model
+rf_control <- trainControl(method="cv", number=3, verboseIter=FALSE)
+randomforest_mod <- train(classe ~ ., data=set_train, method="rf", trControl=rf_control)
+randomforest_mod$finalModel
+```
+```{r}
+# Test data prediction
+rf_predict <- predict(randomforest_mod, newdata=set_test)
+rf_conmatrix <- confusionMatrix(table(rf_predict, set_test$classe))
+rf_conmatrix
+```
+```{r}
+plot(rf_conmatrix$table, col = rf_conmatrix$byClass, 
+     main = paste("Random Forest Accuracy =",
+                  round(rf_conmatrix$overall['Accuracy'], 4)))
+```
+
+Decision Trees
+```{r}
+set.seed(1996)
+decisiontree_modfit <- rpart(classe ~ ., data=set_train, method="class")
+fancyRpartPlot(decisiontree_modfit)
+```
+
+```{r}
+# Test data prediction
+dectree_pred <- predict(decisiontree_modfit, newdata=set_test, type="class")
+dectree_confusionmatrix <- confusionMatrix(table(dectree_pred, set_test$classe))
+dectree_confusionmatrix
+```
+```{r}
+# Results to be plotted
+plot(dectree_confusionmatrix$table, col = dectree_confusionmatrix$byClass, 
+     main = paste("Decision Tree Accuracy =",
+                  round(dectree_confusionmatrix$overall['Accuracy'], 4)))
+```
+Generalized Boosted Model
+```{r}
+# Fit Model
+set.seed(1996)
+GBM_con <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+GBM_modelfit  <- train(classe ~ ., data=set_train, method = "gbm",
+                    trControl = GBM_con, verbose = FALSE)
+GBM_modelfit$finalModel
+```
+
+```{r}
+# test data prediction
+GBM_predict <- predict(GBM_modelfit, newdata=set_test)
+GBM_cmatrix <- confusionMatrix(table(GBM_predict, set_test$classe))
+GBM_cmatrix
+```
+
+```{r}
+# resulting matrix to be plotted
+plot(GBM_cmatrix$table, col = GBM_cmatrix$byClass, 
+     main = paste("GBM Accuracy =", round(GBM_cmatrix$overall['Accuracy'], 4)))
+```
+
+Compiling and Applying the best model for the test data
+Accuracy for 3 models are:
+Random Forest = 0.998
+Decision Tree = 0.7456
+Generalized Boosted Model = 0.9869
+
+Therefore, RandomForest to be used.
+
+```{r}
+test_predict <- predict(randomforest_mod, newdata=testing)
+test_predict
+```
+
